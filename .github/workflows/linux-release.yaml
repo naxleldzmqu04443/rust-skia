@@ -2,6 +2,7 @@
 
 name: 'linux-release'
 on:
+  workflow_dispatch: # 这样你就可以在 Actions 界面手动点击运行
   push:
     branches:
       - release
