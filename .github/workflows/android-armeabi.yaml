@@ -1,0 +1,76 @@
+name: Build armeabi-v7a (Android) with all features
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 0.66.3-my-branch
+
+concurrency:
+  group: build-armeabi-v7a-all-features-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android-armeabi-v7a:
+    runs-on: ubuntu-20.04
+    container: ghcr.io/pragmatrix/rust-skia-linux:latest
+    env:
+      SKIA_DEBUG: 0
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - name: Fix git dubious ownership errors
+        run: git config --global --add safe.directory '*'
+
+      - name: Prepare Rustup
+        run: (cd /github/home && ln -s /root/.cargo)
+
+      - name: Update Rustup and Rust
+        run: rustup update
+
+      - name: Configure Rust Toolchain
+        run: rustup default stable
+
+      - name: Install Rust target armv7-linux-androideabi
+        run: rustup target add armv7-linux-androideabi
+
+      - name: Set environment variables for Android cross-compilation (armeabi-v7a)
+        run: |
+          TARGET=armv7-linux-androideabi
+          TARGET_VAR=${TARGET//-/_}
+          export CC_${TARGET_VAR}=armv7-linux-androideabi26-clang
+          export CXX_${TARGET_VAR}=armv7-linux-androideabi26-clang++
+          export AR_${TARGET_VAR}=llvm-ar
+          TARGET_UPPERCASE=$(echo "${TARGET_VAR}" | tr '[:lower:]' '[:upper:]')
+          export CARGO_TARGET_${TARGET_UPPERCASE}_LINKER=armv7-linux-androideabi26-clang
+          # Write to environment file for persistence across steps
+          echo "TARGET=${TARGET}" >> $GITHUB_ENV
+          echo "TARGET_VAR=${TARGET_VAR}" >> $GITHUB_ENV
+          echo "TARGET_UPPERCASE=${TARGET_UPPERCASE}" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Build skia-safe for armeabi-v7a with all features
+        run: |
+          cargo clean
+          cargo build -p skia-safe --release \
+            --target armv7-linux-androideabi \
+            --features "egl,gl,svg,textlayout,vulkan,wayland,webp,x11"
+        env:
+          BUILD_ARTIFACTSTAGINGDIRECTORY: ${{ runner.temp }}
+
+      - name: Compress binaries
+        run: |
+          mkdir -p ${{ runner.temp }}/skia-binaries
+          cp -r target/armv7-linux-androideabi/release ${{ runner.temp }}/skia-binaries/
+          cd ${{ runner.temp }}
+          tar -czf skia-binaries-armeabi-v7a-egl-gl-svg-textlayout-vulkan-wayland-webp-x11.tar.gz skia-binaries
+        shell: bash
+
+      - name: Upload binaries as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: skia-binaries-armeabi-v7a-all-features
+          path: ${{ runner.temp }}/skia-binaries-armeabi-v7a-egl-gl-svg-textlayout-vulkan-wayland-webp-x11.tar.gz
